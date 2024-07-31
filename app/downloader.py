@@ -24,7 +24,8 @@ class DownloadManager:
             'format': format,
             'quality': quality,
             'folder': folder,
-            'status': 'pending'
+            'status': 'pending',
+            'download_url': None
         }
         self.downloads[download_id] = download_info
         logger.debug(f"Adding download {download_id} with status {download_info['status']}")
@@ -37,7 +38,6 @@ class DownloadManager:
         quality = download_info['quality']
         folder = download_info['folder']
 
-        # Update status to downloading
         download_info['status'] = 'downloading'
         logger.debug(f"Download {download_info['id']} status updated to downloading")
 
@@ -49,25 +49,37 @@ class DownloadManager:
             'format': get_format(format, quality),
             'outtmpl': output_path,
             'noplaylist': True,
+            # Adding cookie file and user-agent for more robust handling
+            # 'cookiefile': '/path/to/cookies.txt',  # Specify the path to a valid cookies.txt file
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
         }
 
-        # Run the download in a separate thread to avoid blocking the event loop
         try:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(self.executor, self.download_video, ytdl_opts, url, download_info)
+            await loop.run_in_executor(self.executor, self.download_video, ytdl_opts, url, download_info, folder)
         except Exception as e:
             logger.error(f"Error downloading {url}: {e}")
             download_info['status'] = 'error'
             download_info['error_message'] = str(e)
 
-    def download_video(self, ytdl_opts, url, download_info):
-        with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
-            result = ytdl.download([url])
-            download_info['status'] = 'completed' if result == 0 else 'failed'
-            logger.debug(f"Download {download_info['id']} completed with status {download_info['status']}")
+    def download_video(self, ytdl_opts, url, download_info, folder):
+        try:
+            with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
+                info_dict = ytdl.extract_info(url, download=True)
+                video_title = info_dict.get('title', 'video')
+                download_info['status'] = 'completed'
+
+                output_path = ytdl.prepare_filename(info_dict)
+                relative_path = os.path.relpath(output_path, self.config.DOWNLOAD_DIR)
+                download_info['download_url'] = f"/downloads/{relative_path.replace(os.sep, '/')}"
+
+                logger.debug(f"Download {download_info['id']} completed: {output_path}")
+        except Exception as e:
+            logger.error(f"Error in download_video: {e}")
+            download_info['status'] = 'failed'
+            download_info['error_message'] = str(e)
 
     async def get_status(self):
-        # Return a copy to avoid concurrency issues
         return {k: v.copy() for k, v in self.downloads.items()}
 
 download_manager = DownloadManager(config)

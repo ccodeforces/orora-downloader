@@ -80,6 +80,7 @@ app.add_routes([
     web.options('/add', cors_options_handler),  # Handle preflight OPTIONS request for /add
     web.get('/status', get_status),
     web.get('/events', sse_handler),
+    web.static('/downloads', config.DOWNLOAD_DIR),  # Serve files from DOWNLOAD_DIR
 ])
 
 app.on_response_prepare.append(on_prepare)  # Attach the CORS handler to all responses
