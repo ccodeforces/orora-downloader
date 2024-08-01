@@ -51,7 +51,6 @@ async def sse_handler(request):
             download_status = await download_manager.get_status()
             data = json.dumps(download_status)
             await response.write(f"data: {data}\n\n".encode('utf-8'))
-            await response.drain()
             await asyncio.sleep(1)  # Sending updates every 1 second
     except asyncio.CancelledError:
         logger.info("SSE connection closed by client")
@@ -65,21 +64,21 @@ async def cors_options_handler(request):
     return web.Response(headers={
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     })
 
 # Adding CORS headers to each response
 async def on_prepare(request, response):
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
 
 app = web.Application()
 app.add_routes([
-    web.post('/add', add_download),
-    web.options('/add', cors_options_handler),  # Handle preflight OPTIONS request for /add
-    web.get('/status', get_status),
-    web.get('/events', sse_handler),
+    web.post('/api/add', add_download),  # Note the /api prefix
+    web.options('/api/add', cors_options_handler),  # Handle preflight OPTIONS request for /add
+    web.get('/api/status', get_status),
+    web.get('/api/events', sse_handler),
     web.static('/downloads', config.DOWNLOAD_DIR),  # Serve files from DOWNLOAD_DIR
 ])
 

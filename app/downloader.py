@@ -10,6 +10,7 @@ from config.config import config
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('downloader')
 
+
 class DownloadManager:
     def __init__(self, config):
         self.config = config
@@ -49,8 +50,6 @@ class DownloadManager:
             'format': get_format(format, quality),
             'outtmpl': output_path,
             'noplaylist': True,
-            # Adding cookie file and user-agent for more robust handling
-            # 'cookiefile': '/path/to/cookies.txt',  # Specify the path to a valid cookies.txt file
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
         }
 
@@ -66,12 +65,13 @@ class DownloadManager:
         try:
             with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
                 info_dict = ytdl.extract_info(url, download=True)
-                video_title = info_dict.get('title', 'video')
+                output_path = ytdl.prepare_filename(info_dict)
                 download_info['status'] = 'completed'
 
-                output_path = ytdl.prepare_filename(info_dict)
+                # Correct the relative path and add the base URL
                 relative_path = os.path.relpath(output_path, self.config.DOWNLOAD_DIR)
-                download_info['download_url'] = f"/downloads/{relative_path.replace(os.sep, '/')}"
+                download_info[
+                    'download_url'] = f"https://tokyo.ororabrowser.com/downloads/{relative_path.replace(os.sep, '/')}"
 
                 logger.debug(f"Download {download_info['id']} completed: {output_path}")
         except Exception as e:
@@ -81,5 +81,6 @@ class DownloadManager:
 
     async def get_status(self):
         return {k: v.copy() for k, v in self.downloads.items()}
+
 
 download_manager = DownloadManager(config)
