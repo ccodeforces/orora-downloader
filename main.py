@@ -15,10 +15,11 @@ async def add_download(request):
         format = data.get('format')
         quality = data.get('quality')
         folder = data.get('folder', 'default')
-        if not url or not format or not quality:
+        user_id = data.get('user_id')
+        if not url or not format or not quality or not user_id:
             raise web.HTTPBadRequest(reason='Missing required fields')
-        logger.info(f"Received download request: {url}")
-        download_info = await download_manager.add_download(url, format, quality, folder)
+        logger.info(f"Received download request: {url} for user {user_id}")
+        download_info = await download_manager.add_download(url, format, quality, folder, user_id)
         return web.json_response(download_info)
     except Exception as e:
         logger.error(f"Error in add_download: {e}")
@@ -35,6 +36,7 @@ async def get_status(request):
         return web.HTTPInternalServerError(reason=str(e))
 
 async def sse_handler(request):
+    user_id = request.query.get('user_id')
     response = web.StreamResponse(
         status=200,
         reason='OK',
@@ -48,10 +50,10 @@ async def sse_handler(request):
 
     try:
         while True:
-            download_status = await download_manager.get_status()
+            download_status = await download_manager.get_status(user_id)
             data = json.dumps(download_status)
             await response.write(f"data: {data}\n\n".encode('utf-8'))
-            await asyncio.sleep(1)  # Sending updates every 1 second
+            await asyncio.sleep(1)
     except asyncio.CancelledError:
         logger.info("SSE connection closed by client")
     except Exception as e:
