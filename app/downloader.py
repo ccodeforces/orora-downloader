@@ -27,7 +27,9 @@ class DownloadManager:
             'folder': folder,
             'user_id': user_id,
             'status': 'pending',
-            'download_url': None
+            'download_url': None,
+            'title': None,
+            'size': None
         }
         self.downloads[download_id] = download_info
         logger.debug(f"Adding download {download_id} for user {user_id} with status {download_info['status']}")
@@ -70,10 +72,12 @@ class DownloadManager:
                 info_dict = ytdl.extract_info(url, download=True)
                 output_path = ytdl.prepare_filename(info_dict)
                 download_info['status'] = 'completed'
+                download_info['title'] = info_dict.get('title', 'video')
+                # Calculate size if 'filesize' is not available, use 'filesize_approx'
+                download_info['size'] = info_dict.get('filesize') or info_dict.get('filesize_approx')
 
                 relative_path = os.path.relpath(output_path, self.config.DOWNLOAD_DIR)
-                download_info[
-                    'download_url'] = f"https://tokyo.ororabrowser.com/downloads/{relative_path.replace(os.sep, '/')}"
+                download_info['download_url'] = f"https://tokyo.ororabrowser.com/downloads/{relative_path.replace(os.sep, '/')}"
 
                 logger.debug(f"Download {download_info['id']} completed: {output_path}")
         except Exception as e:
@@ -83,9 +87,10 @@ class DownloadManager:
 
     async def get_status(self, user_id=None):
         if user_id:
-            return {k: v.copy() for k, v in self.downloads.items() if v['user_id'] == user_id}
+            # Ensure the downloads are sorted by the latest first
+            return dict(sorted({k: v.copy() for k, v in self.downloads.items() if v['user_id'] == user_id}.items(), key=lambda item: int(item[0]), reverse=True))
         else:
-            return {k: v.copy() for k, v in self.downloads.items()}
+            return dict(sorted(self.downloads.items(), key=lambda item: int(item[0]), reverse=True))
 
 
 download_manager = DownloadManager(config)
