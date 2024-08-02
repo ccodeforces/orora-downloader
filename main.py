@@ -53,7 +53,6 @@ async def sse_handler(request):
             download_status = await download_manager.get_status(user_id)
             data = json.dumps(download_status)
             await response.write(f"data: {data}\n\n".encode('utf-8'))
-            await response.drain()
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         logger.info("SSE connection closed by client")
