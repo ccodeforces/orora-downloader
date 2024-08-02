@@ -11,6 +11,7 @@ class Config:
         'YTDL_OPTIONS': '{}',
         'HOST': '0.0.0.0',
         'PORT': '8081',
+        'DATABASE': './downloads.db',  # Add this line
     }
 
     def __init__(self):

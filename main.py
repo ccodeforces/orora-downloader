@@ -53,6 +53,7 @@ async def sse_handler(request):
             download_status = await download_manager.get_status(user_id)
             data = json.dumps(download_status)
             await response.write(f"data: {data}\n\n".encode('utf-8'))
+            await response.drain()
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         logger.info("SSE connection closed by client")
@@ -87,4 +88,6 @@ app.add_routes([
 app.on_response_prepare.append(on_prepare)  # Attach the CORS handler to all responses
 
 if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.create_task(download_manager.delete_old_downloads())  # Add the cleanup worker
     web.run_app(app, host=config.HOST, port=int(config.PORT))
