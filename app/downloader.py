@@ -2,50 +2,23 @@ import asyncio
 import concurrent.futures
 import os
 import yt_dlp
-import sqlite3
-import logging
 from app.dl_formats import get_format
+import logging
+
 from config.config import config
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('downloader')
+
 
 class DownloadManager:
     def __init__(self, config):
         self.config = config
         self.downloads = {}
         self.executor = concurrent.futures.ThreadPoolExecutor()
-        self.init_db()
-
-    def init_db(self):
-        self.conn = sqlite3.connect(self.config.DATABASE, check_same_thread=False)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS downloads (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url TEXT,
-                format TEXT,
-                quality TEXT,
-                folder TEXT,
-                user_id TEXT,
-                status TEXT,
-                download_url TEXT,
-                title TEXT,
-                size INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                error_message TEXT
-            )
-        ''')
-        self.conn.commit()
 
     async def add_download(self, url, format, quality, folder, user_id):
-        self.cursor.execute('''
-            INSERT INTO downloads (url, format, quality, folder, user_id, status)
-            VALUES (?, ?, ?, ?, ?, 'pending')
-        ''', (url, format, quality, folder, user_id))
-        download_id = self.cursor.lastrowid
-        self.conn.commit()
-
+        download_id = str(len(self.downloads) + 1)
         download_info = {
             'id': download_id,
             'url': url,
@@ -72,7 +45,6 @@ class DownloadManager:
 
         download_info['status'] = 'downloading'
         logger.debug(f"Download {download_info['id']} status updated to downloading")
-        self.update_download_status(download_info['id'], 'downloading')
 
         user_folder = os.path.join(self.config.DOWNLOAD_DIR, user_id)
         output_dir = os.path.join(user_folder, folder)
@@ -92,8 +64,7 @@ class DownloadManager:
         except Exception as e:
             logger.error(f"Error downloading {url}: {e}")
             download_info['status'] = 'error'
-            self.update_download_status(download_info['id'], 'error', str(e))
-            await notify_sse(user_id)  # Notify on error as well
+            download_info['error_message'] = str(e)
 
     def download_video(self, ytdl_opts, url, download_info, user_folder):
         try:
@@ -102,74 +73,24 @@ class DownloadManager:
                 output_path = ytdl.prepare_filename(info_dict)
                 download_info['status'] = 'completed'
                 download_info['title'] = info_dict.get('title', 'video')
+                # Calculate size if 'filesize' is not available, use 'filesize_approx'
                 download_info['size'] = info_dict.get('filesize') or info_dict.get('filesize_approx')
 
                 relative_path = os.path.relpath(output_path, self.config.DOWNLOAD_DIR)
-                download_info[
-                    'download_url'] = f"https://{self.config.HOST}/downloads/{relative_path.replace(os.sep, '/')}"
+                download_info['download_url'] = f"https://tokyo.ororabrowser.com/downloads/{relative_path.replace(os.sep, '/')}"
 
-                self.update_download_info(download_info)
                 logger.debug(f"Download {download_info['id']} completed: {output_path}")
         except Exception as e:
             logger.error(f"Error in download_video: {e}")
             download_info['status'] = 'failed'
-            self.update_download_status(download_info['id'], 'failed', str(e))
-
-    def update_download_status(self, download_id, status, error_message=None):
-        self.cursor.execute('''
-            UPDATE downloads
-            SET status = ?, error_message = ?
-            WHERE id = ?
-        ''', (status, error_message, download_id))
-        self.conn.commit()
-
-    def update_download_info(self, download_info):
-        self.cursor.execute('''
-            UPDATE downloads
-            SET status = ?, download_url = ?, title = ?, size = ?
-            WHERE id = ?
-        ''', (
-            download_info['status'],
-            download_info['download_url'],
-            download_info['title'],
-            download_info['size'],
-            download_info['id']
-        ))
-        self.conn.commit()
+            download_info['error_message'] = str(e)
 
     async def get_status(self, user_id=None):
         if user_id:
-            self.cursor.execute('''
-                SELECT * FROM downloads WHERE user_id = ? ORDER BY id DESC
-            ''', (user_id,))
+            # Ensure the downloads are sorted by the latest first
+            return dict(sorted({k: v.copy() for k, v in self.downloads.items() if v['user_id'] == user_id}.items(), key=lambda item: int(item[0]), reverse=True))
         else:
-            self.cursor.execute('''
-                SELECT * FROM downloads ORDER BY id DESC
-            ''')
-        rows = self.cursor.fetchall()
-        return {row[0]: {
-            'id': row[0],
-            'url': row[1],
-            'format': row[2],
-            'quality': row[3],
-            'folder': row[4],
-            'user_id': row[5],
-            'status': row[6],
-            'download_url': row[7],
-            'title': row[8],
-            'size': row[9],
-            'created_at': row[10],
-            'error_message': row[11]
-        } for row in rows}
-
-    async def delete_old_downloads(self):
-        while True:
-            logger.debug("Deleting downloads older than 3 hours")
-            self.cursor.execute('''
-                DELETE FROM downloads WHERE created_at < datetime('now', '-3 hours')
-            ''')
-            self.conn.commit()
-            await asyncio.sleep(3600)
+            return dict(sorted(self.downloads.items(), key=lambda item: int(item[0]), reverse=True))
 
 
 download_manager = DownloadManager(config)
