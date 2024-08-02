@@ -8,6 +8,10 @@ from app.downloader import download_manager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('main')
 
+# Global list to keep track of active SSE connections
+sse_connections = []
+
+
 async def add_download(request):
     try:
         data = await request.json()
@@ -20,10 +24,15 @@ async def add_download(request):
             raise web.HTTPBadRequest(reason='Missing required fields')
         logger.info(f"Received download request: {url} for user {user_id}")
         download_info = await download_manager.add_download(url, format, quality, folder, user_id)
+
+        # Notify the SSE handler immediately
+        await notify_sse(user_id)
+
         return web.json_response(download_info)
     except Exception as e:
         logger.error(f"Error in add_download: {e}")
         return web.HTTPInternalServerError(reason=str(e))
+
 
 async def get_status(request):
     logger.info("Fetching current status of downloads")
@@ -34,6 +43,7 @@ async def get_status(request):
     except Exception as e:
         logger.error(f"Error in get_status: {e}")
         return web.HTTPInternalServerError(reason=str(e))
+
 
 async def sse_handler(request):
     user_id = request.query.get('user_id')
@@ -48,18 +58,32 @@ async def sse_handler(request):
     )
     await response.prepare(request)
 
+    sse_connections.append((user_id, response))
+    logger.info(f"New SSE connection for user {user_id}")
+
     try:
         while True:
-            download_status = await download_manager.get_status(user_id)
-            data = json.dumps(download_status)
-            await response.write(f"data: {data}\n\n".encode('utf-8'))
-            await asyncio.sleep(1)
+            await asyncio.sleep(3600)  # Keep the connection alive
     except asyncio.CancelledError:
-        logger.info("SSE connection closed by client")
+        logger.info(f"SSE connection closed by client for user {user_id}")
     except Exception as e:
         logger.error(f"Error in SSE handler: {e}")
     finally:
+        sse_connections.remove((user_id, response))
         await response.write_eof()
+
+
+async def notify_sse(user_id):
+    download_status = await download_manager.get_status(user_id)
+    data = json.dumps(download_status)
+    for uid, response in sse_connections:
+        if uid == user_id:
+            try:
+                await response.write(f"data: {data}\n\n".encode('utf-8'))
+                await response.drain()
+            except Exception as e:
+                logger.error(f"Error notifying SSE client: {e}")
+
 
 # CORS handling function
 async def cors_options_handler(request):
@@ -69,11 +93,13 @@ async def cors_options_handler(request):
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     })
 
+
 # Adding CORS headers to each response
 async def on_prepare(request, response):
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+
 
 app = web.Application()
 app.add_routes([

@@ -33,7 +33,8 @@ class DownloadManager:
                 download_url TEXT,
                 title TEXT,
                 size INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                error_message TEXT
             )
         ''')
         self.conn.commit()
@@ -157,7 +158,8 @@ class DownloadManager:
             'download_url': row[7],
             'title': row[8],
             'size': row[9],
-            'created_at': row[10]
+            'created_at': row[10],
+            'error_message': row[11]
         } for row in rows}
 
     async def delete_old_downloads(self):
