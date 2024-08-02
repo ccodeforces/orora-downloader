@@ -11,7 +11,6 @@ logger = logging.getLogger('main')
 # Global list to keep track of active SSE connections
 sse_connections = []
 
-
 async def add_download(request):
     try:
         data = await request.json()
@@ -33,7 +32,6 @@ async def add_download(request):
         logger.error(f"Error in add_download: {e}")
         return web.HTTPInternalServerError(reason=str(e))
 
-
 async def get_status(request):
     logger.info("Fetching current status of downloads")
     try:
@@ -43,7 +41,6 @@ async def get_status(request):
     except Exception as e:
         logger.error(f"Error in get_status: {e}")
         return web.HTTPInternalServerError(reason=str(e))
-
 
 async def sse_handler(request):
     user_id = request.query.get('user_id')
@@ -72,18 +69,20 @@ async def sse_handler(request):
         sse_connections.remove((user_id, response))
         await response.write_eof()
 
-
 async def notify_sse(user_id):
-    download_status = await download_manager.get_status(user_id)
-    data = json.dumps(download_status)
-    for uid, response in sse_connections:
-        if uid == user_id:
-            try:
-                await response.write(f"data: {data}\n\n".encode('utf-8'))
-                await response.drain()
-            except Exception as e:
-                logger.error(f"Error notifying SSE client: {e}")
-
+    try:
+        download_status = await download_manager.get_status(user_id)
+        data = json.dumps(download_status)
+        for uid, response in list(sse_connections):
+            if uid == user_id:
+                try:
+                    await response.write(f"data: {data}\n\n".encode('utf-8'))
+                except Exception as e:
+                    logger.error(f"Error notifying SSE client: {e}")
+                    sse_connections.remove((uid, response))
+                    await response.write_eof()
+    except Exception as e:
+        logger.error(f"Error in notify_sse: {e}")
 
 # CORS handling function
 async def cors_options_handler(request):
@@ -93,13 +92,11 @@ async def cors_options_handler(request):
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     })
 
-
 # Adding CORS headers to each response
 async def on_prepare(request, response):
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-
 
 app = web.Application()
 app.add_routes([

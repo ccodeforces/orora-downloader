@@ -10,7 +10,6 @@ from config.config import config
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('downloader')
 
-
 class DownloadManager:
     def __init__(self, config):
         self.config = config
@@ -94,6 +93,7 @@ class DownloadManager:
             logger.error(f"Error downloading {url}: {e}")
             download_info['status'] = 'error'
             self.update_download_status(download_info['id'], 'error', str(e))
+            await notify_sse(user_id)  # Notify on error as well
 
     def download_video(self, ytdl_opts, url, download_info, user_folder):
         try:
@@ -106,7 +106,7 @@ class DownloadManager:
 
                 relative_path = os.path.relpath(output_path, self.config.DOWNLOAD_DIR)
                 download_info[
-                    'download_url'] = f"https://tokyo.ororabrowser.com/downloads/{relative_path.replace(os.sep, '/')}"
+                    'download_url'] = f"https://{self.config.HOST}/downloads/{relative_path.replace(os.sep, '/')}"
 
                 self.update_download_info(download_info)
                 logger.debug(f"Download {download_info['id']} completed: {output_path}")
