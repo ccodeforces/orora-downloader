@@ -10,7 +10,6 @@ from config.config import config
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('downloader')
 
-
 class DownloadManager:
     def __init__(self, config):
         self.config = config
@@ -35,6 +34,7 @@ class DownloadManager:
         logger.debug(f"Adding download {download_id} for user {user_id} with status {download_info['status']}")
         asyncio.create_task(self.start_download(download_info))
         return download_info
+
 
     async def start_download(self, download_info):
         url = download_info['url']
@@ -69,12 +69,17 @@ class DownloadManager:
     def download_video(self, ytdl_opts, url, download_info, user_folder):
         try:
             with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
+                # Extract video information first
+                info_dict = ytdl.extract_info(url, download=False)
+
+                # Update download_info with title and size
+                download_info['title'] = info_dict.get('title', 'video')
+                download_info['size'] = info_dict.get('filesize') or info_dict.get('filesize_approx')
+
+                # Now download the video
                 info_dict = ytdl.extract_info(url, download=True)
                 output_path = ytdl.prepare_filename(info_dict)
                 download_info['status'] = 'completed'
-                download_info['title'] = info_dict.get('title', 'video')
-                # Calculate size if 'filesize' is not available, use 'filesize_approx'
-                download_info['size'] = info_dict.get('filesize') or info_dict.get('filesize_approx')
 
                 relative_path = os.path.relpath(output_path, self.config.DOWNLOAD_DIR)
                 download_info['download_url'] = f"https://tokyo.ororabrowser.com/downloads/{relative_path.replace(os.sep, '/')}"
@@ -87,10 +92,26 @@ class DownloadManager:
 
     async def get_status(self, user_id=None):
         if user_id:
-            # Ensure the downloads are sorted by the latest first
+            # Sort by download ID in descending order (newest first)
             return dict(sorted({k: v.copy() for k, v in self.downloads.items() if v['user_id'] == user_id}.items(), key=lambda item: int(item[0]), reverse=True))
         else:
+            # Sort by download ID in descending order (newest first)
             return dict(sorted(self.downloads.items(), key=lambda item: int(item[0]), reverse=True))
 
+    async def delete_download(self, download_id, user_id):
+        if download_id in self.downloads and self.downloads[download_id]['user_id'] == user_id:
+            download_info = self.downloads.pop(download_id) # Remove from the list
+
+            # Delete the file if it exists
+            download_path = download_info.get('download_url')
+            if download_path:
+                absolute_path = os.path.join(self.config.DOWNLOAD_DIR, download_path.split('/downloads/')[1])
+                if os.path.exists(absolute_path):
+                    os.remove(absolute_path)
+                    logger.debug(f"Deleted file {absolute_path} for download {download_id}")
+
+            return {'status': 'success', 'message': f'Download {download_id} deleted'}
+        else:
+            return {'status': 'error', 'message': f'Download {download_id} not found or not authorized'}
 
 download_manager = DownloadManager(config)

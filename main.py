@@ -61,6 +61,20 @@ async def sse_handler(request):
     finally:
         await response.write_eof()
 
+async def delete_download(request):
+    try:
+        data = await request.json()
+        download_id = data.get('id')
+        user_id = data.get('user_id')
+        if not download_id or not user_id:
+            raise web.HTTPBadRequest(reason='Missing required fields')
+        logger.info(f"Received delete request for download {download_id} from user {user_id}")
+        delete_result = await download_manager.delete_download(download_id, user_id)
+        return web.json_response(delete_result)
+    except Exception as e:
+        logger.error(f"Error in delete_download: {e}")
+        return web.HTTPInternalServerError(reason=str(e))
+
 # CORS handling function
 async def cors_options_handler(request):
     return web.Response(headers={
@@ -81,6 +95,8 @@ app.add_routes([
     web.options('/api/add', cors_options_handler),  # Handle preflight OPTIONS request for /add
     web.get('/api/status', get_status),
     web.get('/api/events', sse_handler),
+    web.post('/api/delete', delete_download),  # Add delete endpoint
+    web.options('/api/delete', cors_options_handler),  # Handle preflight OPTIONS request for /delete
     web.static('/downloads', config.DOWNLOAD_DIR),  # Serve files from DOWNLOAD_DIR
 ])
 
