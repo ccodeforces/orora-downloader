@@ -82,7 +82,7 @@ class DownloadManager:
                 download_info['status'] = 'completed'
 
                 relative_path = os.path.relpath(output_path, self.config.DOWNLOAD_DIR)
-                download_info['download_url'] = f"https://tokyo.ororabrowser.com/downloads/{relative_path.replace(os.sep, '/')}"
+                download_info['download_url'] = f"https://download.ororabrowser.com/downloads/{relative_path.replace(os.sep, '/')}"
 
                 logger.debug(f"Download {download_info['id']} completed: {output_path}")
         except Exception as e:
