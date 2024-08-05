@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from aiohttp import web
+from aiohttp import web, WSMsgType
 from config.config import config
 from app.downloader import download_manager
 
@@ -35,31 +35,25 @@ async def get_status(request):
         logger.error(f"Error in get_status: {e}")
         return web.HTTPInternalServerError(reason=str(e))
 
-async def sse_handler(request):
+async def websocket_handler(request):
     user_id = request.query.get('user_id')
-    response = web.StreamResponse(
-        status=200,
-        reason='OK',
-        headers={
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-        }
-    )
-    await response.prepare(request)
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
 
     try:
         while True:
             download_status = await download_manager.get_status(user_id)
             data = json.dumps(download_status)
-            await response.write(f"data: {data}\n\n".encode('utf-8'))
+            await ws.send_str(data)
             await asyncio.sleep(1)
     except asyncio.CancelledError:
-        logger.info("SSE connection closed by client")
+        logger.info("WebSocket connection closed by client")
     except Exception as e:
-        logger.error(f"Error in SSE handler: {e}")
+        logger.error(f"Error in WebSocket handler: {e}")
     finally:
-        await response.write_eof()
+        await ws.close()
+
+    return ws
 
 async def delete_download(request):
     try:
@@ -94,7 +88,7 @@ app.add_routes([
     web.post('/api/add', add_download),  # Note the /api prefix
     web.options('/api/add', cors_options_handler),  # Handle preflight OPTIONS request for /add
     web.get('/api/status', get_status),
-    web.get('/api/events', sse_handler),
+    web.get('/api/ws', websocket_handler),  # WebSocket endpoint
     web.post('/api/delete', delete_download),  # Add delete endpoint
     web.options('/api/delete', cors_options_handler),  # Handle preflight OPTIONS request for /delete
     web.static('/downloads', config.DOWNLOAD_DIR),  # Serve files from DOWNLOAD_DIR
